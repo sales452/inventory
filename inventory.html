@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warehouse inventory</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f5f4f0; color: #1a1a1a; max-width: 480px; margin: 0 auto;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 4px 0 12px; }
+  .hint { font-size: 12px; color: #888; margin-bottom: 12px; }
+  input, select, button {
+    font-size: 15px; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #d8d6cf; width: 100%; background: #fff;
+  }
+  button { background: #1a1a1a; color: #fff; border: none; cursor: pointer; font-weight: 500; }
+  button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #d8d6cf; }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  #addBox { display: none; flex-direction: column; gap: 8px; background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 12px; border: 1px solid #e5e3db; }
+  .count { font-size: 12px; color: #666; margin: 8px 0; }
+  .item { border: 1px solid #e5e3db; border-radius: 10px; padding: 12px; margin-bottom: 8px; background: #fff; }
+  .item.zero { background: #FFF9B0; border-color: #E8D93A; }
+  .item .name { font-family: ui-monospace, monospace; font-size: 14px; word-break: break-word; }
+  .item .meta { font-size: 12px; color: #888; margin: 4px 0 8px; }
+  .qtyrow { display: flex; align-items: center; gap: 10px; }
+  .qtybtn { width: 44px; height: 44px; padding: 0; border-radius: 8px; font-size: 18px; }
+  .qtyval { flex: 1; text-align: center; font-size: 15px; }
+  .empty { color: #888; font-size: 13px; padding: 12px 0; text-align: center; }
+  .status { font-size: 12px; color: #b8531c; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<h1>Warehouse inventory</h1>
+<div class="hint">Searches NEW CORE STOCK LIST, office warehouse, and warehouse</div>
+
+<!-- ⚠️ Replace this with your deployed Apps Script web app URL -->
+<script>
+  const API_URL = "https://script.google.com/macros/s/AKfycbyM36T24MLrlM2VLZ2FxRwqrvPZrcpEzU_Kod9l5LhAje_iD1qo4z7_SCvUemKjALgW/exec";
+</script>
+
+<div id="status" class="status"></div>
+
+<input id="q" placeholder="Search item or part number" />
+<div style="height:8px"></div>
+<button onclick="showAdd()">+ Add item</button>
+
+<div id="addBox">
+  <input id="aName" placeholder="Item / part number" />
+  <select id="aWh">
+    <option>NEW CORE STOCK LIST</option>
+    <option>office warehouse</option>
+    <option>warehouse</option>
+  </select>
+  <div class="row">
+    <input id="aRack" placeholder="Rack (e.g. A, or RACK NO.1)" style="flex:2" />
+    <input id="aQty" placeholder="Qty" type="number" style="flex:1" />
+  </div>
+  <button onclick="addItem()">Save</button>
+  <button class="secondary" onclick="hideAdd()">Cancel</button>
+</div>
+
+<div class="count" id="count"></div>
+<div id="results"></div>
+
+<script>
+let timer = null;
+document.getElementById('q').addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(search, 250);
+});
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg || '';
+}
+
+function showAdd() { document.getElementById('addBox').style.display = 'flex'; }
+function hideAdd() { document.getElementById('addBox').style.display = 'none'; }
+
+async function search() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) { document.getElementById('results').innerHTML = ''; document.getElementById('count').textContent = ''; return; }
+  setStatus('Searching…');
+  try {
+    const res = await fetch(`${API_URL}?action=search&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    setStatus('');
+    render(data.results || []);
+  } catch (err) {
+    setStatus('Could not reach the sheet. Check the API_URL and your connection.');
+  }
+}
+
+function render(items) {
+  document.getElementById('count').textContent = items.length + (items.length === 1 ? ' item' : ' items');
+  document.getElementById('results').innerHTML = items.map((it, i) => `
+    <div class="item${Number(it.qty) === 0 ? ' zero' : ''}" id="item-${i}">
+      <div class="name">${escapeHtml(it.name)}</div>
+      <div class="meta">${escapeHtml(it.sheet)} &middot; Rack ${escapeHtml(it.rack)}</div>
+      <div class="qtyrow">
+        <button class="qtybtn secondary" onclick="changeQty(${i}, -1)">−</button>
+        <div class="qtyval" id="qty-${i}">${it.qty}</div>
+        <button class="qtybtn secondary" onclick="changeQty(${i}, 1)">+</button>
+      </div>
+    </div>
+  `).join('') || `<div class="empty">No matches.</div>`;
+  window.__items = items;
+}
+
+async function changeQty(i, delta) {
+  const it = window.__items[i];
+  const max = it.qtyCol ? Infinity : 1;
+  const newQty = Math.min(max, Math.max(0, (Number(it.qty) || 0) + delta));
+  document.getElementById(`qty-${i}`).textContent = newQty;
+  document.getElementById(`item-${i}`).classList.toggle('zero', newQty === 0);
+  it.qty = newQty;
+  setStatus('Saving…');
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'updateQty', sheet: it.sheet, row: it.row, col: it.col, qtyCol: it.qtyCol, qty: newQty })
+    });
+    setStatus('');
+  } catch (err) {
+    setStatus('Save failed. Try again.');
+  }
+}
+
+async function addItem() {
+  const name = document.getElementById('aName').value.trim();
+  const sheet = document.getElementById('aWh').value;
+  const rack = document.getElementById('aRack').value.trim();
+  const qty = parseInt(document.getElementById('aQty').value) || 0;
+  if (!name || !rack) { setStatus('Enter an item name and rack.'); return; }
+  setStatus('Saving…');
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'add', sheet, rack, name, qty })
+    });
+    const data = await res.json();
+    if (data.error) { setStatus(data.error); return; }
+    setStatus('');
+    hideAdd();
+    document.getElementById('aName').value = '';
+    document.getElementById('aRack').value = '';
+    document.getElementById('aQty').value = '';
+    document.getElementById('q').value = name;
+    search();
+  } catch (err) {
+    setStatus('Save failed. Try again.');
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+</script>
+</body>
+</html>
