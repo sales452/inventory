@@ -68,9 +68,10 @@
 
 <script>
 let timer = null;
+let controller = null;
 document.getElementById('q').addEventListener('input', () => {
   clearTimeout(timer);
-  timer = setTimeout(search, 250);
+  timer = setTimeout(search, 400);
 });
 
 function setStatus(msg) {
@@ -83,13 +84,16 @@ function hideAdd() { document.getElementById('addBox').style.display = 'none'; }
 async function search() {
   const q = document.getElementById('q').value.trim();
   if (!q) { document.getElementById('results').innerHTML = ''; document.getElementById('count').textContent = ''; return; }
+  if (controller) controller.abort();
+  controller = new AbortController();
   setStatus('Searching…');
   try {
-    const res = await fetch(`${API_URL}?action=search&q=${encodeURIComponent(q)}`);
+    const res = await fetch(`${API_URL}?action=search&q=${encodeURIComponent(q)}`, { signal: controller.signal });
     const data = await res.json();
     setStatus('');
     render(data.results || []);
   } catch (err) {
+    if (err.name === 'AbortError') return;
     setStatus('Could not reach the sheet. Check the API_URL and your connection.');
   }
 }
