@@ -36,7 +36,7 @@
 <body>
 
 <h1>Warehouse inventory</h1>
-<div class="hint">Searches NEW CORE STOCK LIST, office warehouse, and warehouse</div>
+<div class="hint">Searches NEW CORE STOCK LIST, office warehouse, warehouse, Kolkata, and Bangalore Office</div>
 
 <script>
   // Apps Script web app URL -- only used now for mutations (add / sheet mirroring),
@@ -54,10 +54,16 @@
   };
 
   // Maps the Firebase node key back to the real sheet name used by Apps Script / SHEET_CONFIG.
+  // "kolkata" and "bangalore_office" are pushed by their own separate Apps Script
+  // projects (kolkata_sync.gs and bangalore_office_sync.gs), each bound to its own
+  // spreadsheet under its own Google login -- this app never talks to those sheets
+  // directly, it only reads what those scripts already pushed into Firebase.
   const SHEET_NAMES = {
     "NEW_CORE_STOCK_LIST": "NEW CORE STOCK LIST",
     "office_warehouse": "office warehouse",
-    "warehouse": "warehouse"
+    "warehouse": "warehouse",
+    "kolkata": "Kolkata",
+    "bangalore_office": "Bangalore Office"
   };
 </script>
 
@@ -178,6 +184,10 @@ function changeQty(i, delta) {
 
   // 3. Mirror the change onto the actual Sheet cell in the background. The screen
   //    doesn't wait on this -- it's just keeping the Sheet itself up to date.
+  //    NOTE: this only applies to sheets managed by APPS_SCRIPT_URL (NEW CORE STOCK
+  //    LIST, office warehouse, warehouse). Kolkata and Bangalore Office are synced
+  //    one-way (Sheet -> Firebase) by their own separate scripts, so +/- taps here
+  //    update Firebase live but do NOT write back to those two source sheets.
   fetch(APPS_SCRIPT_URL, {
     method: 'POST',
     body: JSON.stringify({ action: 'updateQty', sheet: it.sheet, row: it.row, col: it.col, qtyCol: it.qtyCol, qty: newQty })
